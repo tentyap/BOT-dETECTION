@@ -1,0 +1,195 @@
+{% extends 'detector/base.html' %}
+
+{% block title %}Bot Shield - Request Investigation Console{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="fw-bold text-white mb-0">
+                <i class="bi bi-search text-primary me-2"></i> Request Investigation Console
+            </h3>
+            <p class="text-secondary small mb-0">Search, filter, and inspect incoming HTTP requests and detection reasons.</p>
+        </div>
+        <div class="text-muted small">
+            Matched: <strong class="text-info">{{ total_matched }}</strong> requests
+        </div>
+    </div>
+
+    <!-- Filter Bar Card -->
+    <div class="panel-card p-3 mb-4">
+        <form method="GET" action="{% url 'detector:investigate' %}" class="row g-2 align-items-center">
+            <!-- Filter: IP Address -->
+            <div class="col-md-3 col-sm-6">
+                <label class="form-label text-muted small mb-1">Client IP Address</label>
+                <input type="text" name="ip" class="form-control form-control-sm bg-dark border-secondary text-white" 
+                       placeholder="e.g. 127.0.0.1" value="{{ ip_filter }}">
+            </div>
+
+            <!-- Filter: Classification -->
+            <div class="col-md-3 col-sm-6">
+                <label class="form-label text-muted small mb-1">Classification</label>
+                <select name="classification" class="form-select form-select-sm bg-dark border-secondary text-white">
+                    <option value="ALL" {% if class_filter == 'ALL' or not class_filter %}selected{% endif %}>All Classifications</option>
+                    <option value="HUMAN" {% if class_filter == 'HUMAN' %}selected{% endif %}>Human Traffic</option>
+                    <option value="SUSPICIOUS" {% if class_filter == 'SUSPICIOUS' %}selected{% endif %}>Suspicious Traffic</option>
+                    <option value="BOT" {% if class_filter == 'BOT' %}selected{% endif %}>Automated Bot</option>
+                    <option value="MALICIOUS_BOT" {% if class_filter == 'MALICIOUS_BOT' %}selected{% endif %}>Malicious Bot</option>
+                </select>
+            </div>
+
+            <!-- Filter: Risk Level -->
+            <div class="col-md-2 col-sm-6">
+                <label class="form-label text-muted small mb-1">Risk Score Level</label>
+                <select name="risk_level" class="form-select form-select-sm bg-dark border-secondary text-white">
+                    <option value="" {% if not risk_filter %}selected{% endif %}>All Scores</option>
+                    <option value="LOW" {% if risk_filter == 'LOW' %}selected{% endif %}>Low (0–29)</option>
+                    <option value="MEDIUM" {% if risk_filter == 'MEDIUM' %}selected{% endif %}>Medium (30–49)</option>
+                    <option value="HIGH" {% if risk_filter == 'HIGH' %}selected{% endif %}>High (50–79)</option>
+                    <option value="CRITICAL" {% if risk_filter == 'CRITICAL' %}selected{% endif %}>Critical (80–100)</option>
+                </select>
+            </div>
+
+            <!-- Filter: User-Agent Search -->
+            <div class="col-md-2 col-sm-6">
+                <label class="form-label text-muted small mb-1">User-Agent Search</label>
+                <input type="text" name="user_agent" class="form-control form-control-sm bg-dark border-secondary text-white" 
+                       placeholder="e.g. curl, python" value="{{ ua_filter }}">
+            </div>
+
+            <!-- Buttons -->
+            <div class="col-md-2 col-sm-12 d-flex gap-2 align-self-end mt-2 mt-md-0">
+                <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+                    <i class="bi bi-funnel-fill me-1"></i> Filter
+                </button>
+                <a href="{% url 'detector:investigate' %}" class="btn btn-outline-secondary btn-sm" title="Reset Filters">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Requests Log Table -->
+    <div class="panel-card mb-4">
+        <div class="table-responsive">
+            <table class="table table-custom table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Time (UTC)</th>
+                        <th>Client IP</th>
+                        <th>Method & Path</th>
+                        <th>Status</th>
+                        <th>Risk Score</th>
+                        <th>Classification</th>
+                        <th>Triggered Rules / Details</th>
+                        <th>User-Agent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in page_obj %}
+                        <tr>
+                            <td class="small text-muted">{{ req.timestamp|date:"Y-m-d H:i:s" }}</td>
+                            <td>
+                                <a href="{% url 'detector:index' %}?search_ip={{ req.ip_address_str }}#investigation" class="text-info fw-mono text-decoration-none">
+                                    {{ req.ip_address_str }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary font-monospace me-1">{{ req.method }}</span>
+                                <span class="text-light font-monospace small">{{ req.path|truncatechars:35 }}</span>
+                            </td>
+                            <td>
+                                {% if req.status_code == 200 %}
+                                    <span class="badge bg-success-subtle text-success border border-success">{{ req.status_code }}</span>
+                                {% elif req.status_code == 403 %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger">{{ req.status_code }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ req.status_code }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if req.risk_score >= 80 %}
+                                    <span class="badge bg-danger fs-6">{{ req.risk_score }} / 100</span>
+                                {% elif req.risk_score >= 50 %}
+                                    <span class="badge bg-warning text-dark fs-6">{{ req.risk_score }} / 100</span>
+                                {% elif req.risk_score >= 30 %}
+                                    <span class="badge bg-info text-dark fs-6">{{ req.risk_score }} / 100</span>
+                                {% else %}
+                                    <span class="badge bg-success fs-6">{{ req.risk_score }} / 100</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="small fw-semibold {% if req.classification == 'HUMAN' %}text-success{% elif req.classification == 'SUSPICIOUS' %}text-warning{% elif req.classification == 'BOT' %}text-danger{% else %}text-danger fw-bold{% endif %}">
+                                    {{ req.get_classification_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if req.detection_logs.all %}
+                                    <div class="d-flex flex-wrap gap-1">
+                                        {% for log in req.detection_logs.all %}
+                                            <span class="badge bg-danger-subtle text-danger border border-danger small" title="{{ log.reason }}">
+                                                {{ log.rule_name }} (+{{ log.severity_points }})
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted small"><i class="bi bi-check2 text-success me-1"></i> Clean</span>
+                                {% endif %}
+                            </td>
+                            <td class="small text-secondary" style="max-width: 180px;">
+                                <div class="text-truncate" title="{{ req.user_agent }}">
+                                    {{ req.user_agent|default:"[Empty]" }}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox fs-2 mb-2 d-block"></i>
+                                No requests matched the selected filters.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        {% if page_obj.has_other_pages %}
+            <div class="panel-header d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small text-muted">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link bg-dark border-secondary text-light" href="?page={{ page_obj.previous_page_number }}&ip={{ ip_filter }}&classification={{ class_filter }}&risk_level={{ risk_filter }}&user_agent={{ ua_filter }}">
+                                Previous
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link bg-dark border-secondary text-secondary">Previous</span></li>
+                    {% endif %}
+
+                    <li class="page-item active">
+                        <span class="page-link bg-primary border-primary">{{ page_obj.number }}</span>
+                    </li>
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link bg-dark border-secondary text-light" href="?page={{ page_obj.next_page_number }}&ip={{ ip_filter }}&classification={{ class_filter }}&risk_level={{ risk_filter }}&user_agent={{ ua_filter }}">
+                                Next
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link bg-dark border-secondary text-secondary">Next</span></li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

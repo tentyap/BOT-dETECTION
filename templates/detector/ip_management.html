@@ -1,0 +1,238 @@
+{% extends 'detector/base.html' %}
+
+{% block title %}Bot Shield - IP Address Management Console{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Header & Action Button -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="fw-bold text-white mb-0">
+                <i class="bi bi-shield-shaded text-primary me-2"></i> IP Address Management Console
+            </h3>
+            <p class="text-secondary small mb-0">Maintain IP allowlists, enforce access restrictions, and monitor visitor reputations.</p>
+        </div>
+        <div>
+            <button class="btn btn-primary btn-sm fw-semibold" data-bs-toggle="collapse" data-bs-target="#addIpCard">
+                <i class="bi bi-plus-circle me-1"></i> Add / Modify IP Rule
+            </button>
+        </div>
+    </div>
+
+    <!-- Django Flash Messages -->
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show shadow-sm" role="alert">
+                    <i class="bi bi-info-circle-fill me-2"></i> {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Collapsible Add/Modify IP Form Card -->
+    <div class="collapse mb-4" id="addIpCard">
+        <div class="panel-card p-4 border border-primary border-opacity-50">
+            <h5 class="fw-bold text-white mb-3"><i class="bi bi-hdd-network text-info me-2"></i> Register or Modify IP Policy</h5>
+            <form method="POST" action="{% url 'detector:ip_management' %}" class="row g-3">
+                {% csrf_token %}
+                <input type="hidden" name="add_ip" value="1">
+
+                <div class="col-md-4">
+                    <label class="form-label text-muted small mb-1">IP Address</label>
+                    <input type="text" name="ip_address" class="form-control bg-dark border-secondary text-white" 
+                           placeholder="e.g. 192.168.1.100 or 10.0.0.1" required>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label text-muted small mb-1">Access Policy</label>
+                    <select name="status" class="form-select bg-dark border-secondary text-white">
+                        <option value="MONITORED">Monitored (Standard Inspection)</option>
+                        <option value="ALLOWLISTED">Allowlisted (Bypass Restrictions)</option>
+                        <option value="BLOCKED">Blocked (Deny All Access 403)</option>
+                    </select>
+                </div>
+
+                <div class="col-md-5">
+                    <label class="form-label text-muted small mb-1">Administrative Notes</label>
+                    <input type="text" name="notes" class="form-control bg-dark border-secondary text-white" 
+                           placeholder="e.g. Trusted internal office or suspected scraper IP">
+                </div>
+
+                <div class="col-12 text-end">
+                    <button type="button" class="btn btn-outline-secondary btn-sm me-2" data-bs-toggle="collapse" data-bs-target="#addIpCard">Cancel</button>
+                    <button type="submit" class="btn btn-success btn-sm px-4 fw-semibold">Save IP Policy</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Filter Tabs & Search Bar -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <!-- Tabs -->
+        <ul class="nav nav-pills gap-1">
+            <li class="nav-item">
+                <a class="nav-link {% if status_tab == 'ALL' %}active{% endif %} py-1 px-3" href="?tab=ALL">
+                    All IPs <span class="badge bg-dark ms-1">{{ tab_counts.all }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if status_tab == 'MONITORED' %}active{% endif %} py-1 px-3" href="?tab=MONITORED">
+                    Monitored <span class="badge bg-secondary ms-1">{{ tab_counts.monitored }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if status_tab == 'ALLOWLISTED' %}active{% endif %} py-1 px-3 text-success" href="?tab=ALLOWLISTED">
+                    Allowlisted <span class="badge bg-success ms-1">{{ tab_counts.allowlisted }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if status_tab == 'BLOCKED' %}active{% endif %} py-1 px-3 text-danger" href="?tab=BLOCKED">
+                    Blocked <span class="badge bg-danger ms-1">{{ tab_counts.blocked }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if status_tab == 'BOTS' %}active{% endif %} py-1 px-3 text-warning" href="?tab=BOTS">
+                    Bots Only <span class="badge bg-warning text-dark ms-1">{{ tab_counts.bots }}</span>
+                </a>
+            </li>
+        </ul>
+
+        <!-- Search Box -->
+        <form method="GET" action="{% url 'detector:ip_management' %}" class="d-flex gap-2">
+            <input type="hidden" name="tab" value="{{ status_tab }}">
+            <input type="text" name="q" class="form-control form-control-sm bg-dark border-secondary text-white" 
+                   placeholder="Search IP or notes..." value="{{ search_query }}">
+            <button type="submit" class="btn btn-outline-info btn-sm">Search</button>
+        </form>
+    </div>
+
+    <!-- IP Table -->
+    <div class="panel-card mb-4">
+        <div class="table-responsive">
+            <table class="table table-custom table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>Status</th>
+                        <th>Reputation</th>
+                        <th>Bot Flag</th>
+                        <th>Total Requests</th>
+                        <th>Last Seen</th>
+                        <th>Notes</th>
+                        <th>Access Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ip in page_obj %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'detector:index' %}?search_ip={{ ip.ip_address }}#investigation" class="text-info fw-mono fw-bold text-decoration-none">
+                                    {{ ip.ip_address }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if ip.status == 'BLOCKED' %}
+                                    <span class="badge bg-danger px-2 py-1"><i class="bi bi-slash-circle me-1"></i> BLOCKED</span>
+                                {% elif ip.status == 'ALLOWLISTED' %}
+                                    <span class="badge bg-success px-2 py-1"><i class="bi bi-check-circle me-1"></i> ALLOWED</span>
+                                {% else %}
+                                    <span class="badge bg-secondary px-2 py-1"><i class="bi bi-eye me-1"></i> MONITORED</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if ip.reputation_score >= 80 %}bg-success{% elif ip.reputation_score >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6">
+                                    {{ ip.reputation_score }} / 100
+                                </span>
+                            </td>
+                            <td>
+                                {% if ip.is_bot %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger">
+                                        <i class="bi bi-robot me-1"></i> Bot
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-success-subtle text-success border border-success">
+                                        <i class="bi bi-person me-1"></i> Human
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-light fw-semibold">{{ ip.total_requests }}</td>
+                            <td class="small text-muted">{{ ip.last_seen|date:"Y-m-d H:i" }}</td>
+                            <td class="small text-secondary" style="max-width: 160px;">
+                                <div class="text-truncate" title="{{ ip.notes }}">
+                                    {{ ip.notes|default:"-" }}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    {% if ip.status != 'BLOCKED' %}
+                                        <form method="POST" action="{% url 'detector:toggle_ip_status' ip.ip_address %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="block">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Block this IP">
+                                                Block
+                                            </button>
+                                        </form>
+                                    {% endif %}
+
+                                    {% if ip.status != 'ALLOWLISTED' %}
+                                        <form method="POST" action="{% url 'detector:toggle_ip_status' ip.ip_address %}" class="d-inline ms-1">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="allowlist">
+                                            <button type="submit" class="btn btn-outline-success btn-sm py-0 px-2" title="Allowlist this IP">
+                                                Allow
+                                            </button>
+                                        </form>
+                                    {% endif %}
+
+                                    {% if ip.status != 'MONITORED' %}
+                                        <form method="POST" action="{% url 'detector:toggle_ip_status' ip.ip_address %}" class="d-inline ms-1">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="monitor">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2" title="Reset to Monitored">
+                                                Reset
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-muted">
+                                <i class="bi bi-shield-slash fs-2 mb-2 d-block"></i>
+                                No IP records found in this category.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        {% if page_obj.has_other_pages %}
+            <div class="panel-header d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small text-muted">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link bg-dark border-secondary text-light" href="?page={{ page_obj.previous_page_number }}&tab={{ status_tab }}&q={{ search_query }}">Previous</a>
+                        </li>
+                    {% endif %}
+                    <li class="page-item active"><span class="page-link bg-primary border-primary">{{ page_obj.number }}</span></li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link bg-dark border-secondary text-light" href="?page={{ page_obj.next_page_number }}&tab={{ status_tab }}&q={{ search_query }}">Next</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

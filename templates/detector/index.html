@@ -1,0 +1,382 @@
+{% extends 'detector/base.html' %}
+
+{% block title %}Bot Shield - Live Scanner & IP Forensics{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Django Feedback Messages -->
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show shadow-sm" role="alert">
+                    <i class="bi bi-info-circle-fill me-2"></i> {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Top Counters -->
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="text-secondary small fw-semibold text-uppercase">Total Requests</div>
+                <div class="h3 fw-bold text-white mb-0 mt-1">{{ total_requests }}</div>
+                <small class="text-muted">Intercepted traffic</small>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="text-secondary small fw-semibold text-uppercase">Tracked IPs</div>
+                <div class="h3 fw-bold text-info mb-0 mt-1">{{ total_ips }}</div>
+                <small class="text-muted">Unique visitors</small>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="text-secondary small fw-semibold text-uppercase">Detected Bots</div>
+                <div class="h3 fw-bold text-warning mb-0 mt-1">{{ detected_bots }}</div>
+                <small class="text-muted">Scrapers & crawlers</small>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="text-secondary small fw-semibold text-uppercase">Blocked IPs</div>
+                <div class="h3 fw-bold text-danger mb-0 mt-1">{{ blocked_ips }}</div>
+                <small class="text-muted">Denied access (403)</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- FRONT-END IP INVESTIGATION & LOOKUP TOOL -->
+    <div class="panel-card p-4 mb-4 border border-primary border-opacity-50" id="investigation">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h4 class="fw-bold text-white mb-1">
+                    <i class="bi bi-search text-primary me-2"></i> Front-End IP Forensic Investigation
+                </h4>
+                <p class="text-secondary small mb-3">
+                    Enter any IP address below to inspect its live reputation, total requests, bot classification verdict, and all triggered detection rules directly on the website.
+                </p>
+
+                <!-- Search Input Form -->
+                <form method="GET" action="{% url 'detector:index' %}#investigation" class="row g-2 align-items-center">
+                    <div class="col-sm-8">
+                        <div class="input-group">
+                            <span class="input-group-text bg-dark border-secondary text-secondary">
+                                <i class="bi bi-hdd-network"></i>
+                            </span>
+                            <input type="text" name="search_ip" class="form-control bg-dark border-secondary text-white" 
+                                   placeholder="Enter IP address (e.g. 127.0.0.1)..." 
+                                   value="{{ search_query }}" required>
+                        </div>
+                    </div>
+                    <div class="col-sm-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary fw-semibold flex-grow-1">
+                            <i class="bi bi-search me-1"></i> Investigate IP
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Quick Check Link -->
+                <div class="mt-2 small">
+                    <span class="text-muted">Quick shortcut:</span>
+                    <a href="{% url 'detector:index' %}?search_ip={{ client_ip }}#investigation" class="text-info text-decoration-none ms-1">
+                        <i class="bi bi-arrow-right-short"></i> Check my current IP ({{ client_ip }})
+                    </a>
+                    {% if search_query %}
+                        <span class="text-muted ms-2">|</span>
+                        <a href="{% url 'detector:index' %}" class="text-secondary text-decoration-none ms-2">
+                            <i class="bi bi-x-circle"></i> Clear Search
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-lg-4 text-lg-end mt-3 mt-lg-0 text-muted small border-start-lg border-secondary border-opacity-25 ps-lg-4">
+                <div class="fw-semibold text-light mb-1"><i class="bi bi-shield-check text-success me-1"></i> Public Forensic Access</div>
+                <div>Inspect requests, risk scores, and bot signatures without entering the admin panel.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- IP SEARCH RESULTS -->
+    {% if search_error %}
+        <div class="alert alert-warning border-warning border-opacity-50 shadow-sm mb-4">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-exclamation-triangle-fill fs-4 text-warning"></i>
+                <div>
+                    <div class="fw-bold">No Records Found</div>
+                    <div class="small">{{ search_error }}</div>
+                </div>
+            </div>
+        </div>
+    {% elif searched_ip %}
+        <div class="panel-card mb-4 border border-info border-opacity-50">
+            <div class="panel-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <span class="badge bg-info text-dark fw-bold me-2 text-uppercase">Forensic Report</span>
+                    <span class="h5 fw-bold text-white mb-0">{{ searched_ip.ip_address }}</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    {% if searched_ip.status == 'BLOCKED' %}
+                        <span class="badge bg-danger px-3 py-2"><i class="bi bi-slash-circle me-1"></i> BLOCKED</span>
+                    {% elif searched_ip.status == 'ALLOWLISTED' %}
+                        <span class="badge bg-success px-3 py-2"><i class="bi bi-check-circle me-1"></i> ALLOWLISTED</span>
+                    {% else %}
+                        <span class="badge bg-secondary px-3 py-2"><i class="bi bi-eye me-1"></i> MONITORED</span>
+                    {% endif %}
+
+                    <!-- Block/Unblock Form -->
+                    <form method="POST" action="{% url 'detector:toggle_ip_status' searched_ip.ip_address %}" class="d-inline"
+                          onsubmit="return confirm('Are you sure you want to toggle the status for {{ searched_ip.ip_address }}?');">
+                        {% csrf_token %}
+                        {% if searched_ip.status == 'BLOCKED' %}
+                            <button type="submit" class="btn btn-outline-success btn-sm">
+                                <i class="bi bi-unlock-fill me-1"></i> Unblock IP
+                            </button>
+                        {% else %}
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-slash-circle-fill me-1"></i> Block This IP
+                            </button>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="bg-dark p-3 rounded text-center border border-secondary border-opacity-25 h-100">
+                            <div class="text-muted small fw-semibold text-uppercase">Reputation Score</div>
+                            <div class="h2 fw-bold mb-0 mt-1 {% if searched_ip.reputation_score >= 80 %}text-success{% elif searched_ip.reputation_score >= 50 %}text-warning{% else %}text-danger{% endif %}">
+                                {{ searched_ip.reputation_score }} <small class="fs-6 text-muted">/ 100</small>
+                            </div>
+                            <small class="text-secondary">
+                                {% if searched_ip.reputation_score >= 80 %}Trustworthy{% elif searched_ip.reputation_score >= 50 %}Suspicious{% else %}High Risk{% endif %}
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 col-sm-6">
+                        <div class="bg-dark p-3 rounded text-center border border-secondary border-opacity-25 h-100">
+                            <div class="text-muted small fw-semibold text-uppercase">Total Requests</div>
+                            <div class="h2 fw-bold text-info mb-0 mt-1">{{ searched_ip.total_requests }}</div>
+                            <small class="text-secondary">Logged connections</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 col-sm-6">
+                        <div class="bg-dark p-3 rounded text-center border border-secondary border-opacity-25 h-100">
+                            <div class="text-muted small fw-semibold text-uppercase">Peak Risk Score</div>
+                            <div class="h2 fw-bold mb-0 mt-1 {% if searched_stats.max_risk >= 80 %}text-danger{% elif searched_stats.max_risk >= 50 %}text-warning{% else %}text-success{% endif %}">
+                                {{ searched_stats.max_risk }} <small class="fs-6 text-muted">/ 100</small>
+                            </div>
+                            <small class="text-secondary">Highest threat level</small>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 col-sm-6">
+                        <div class="bg-dark p-3 rounded text-center border border-secondary border-opacity-25 h-100">
+                            <div class="text-muted small fw-semibold text-uppercase">Bot Verdict</div>
+                            <div class="mt-2">
+                                {% if searched_ip.is_bot or searched_stats.bot_count > 0 %}
+                                    <span class="badge bg-danger fs-6 px-3 py-2"><i class="bi bi-robot me-1"></i> BOT DETECTED</span>
+                                {% elif searched_stats.suspicious_count > 0 %}
+                                    <span class="badge bg-warning text-dark fs-6 px-3 py-2"><i class="bi bi-question-circle me-1"></i> SUSPICIOUS</span>
+                                {% else %}
+                                    <span class="badge bg-success fs-6 px-3 py-2"><i class="bi bi-person-check me-1"></i> HUMAN VISITOR</span>
+                                {% endif %}
+                            </div>
+                            <small class="text-secondary d-block mt-1">First seen: {{ searched_ip.first_seen|date:"Y-m-d H:i" }}</small>
+                        </div>
+                    </div>
+                </div>
+
+                {% if searched_stats.triggered_rules %}
+                    <div class="p-3 bg-dark rounded border border-secondary border-opacity-25 mb-4">
+                        <span class="text-warning small fw-bold text-uppercase me-2"><i class="bi bi-shield-exclamation me-1"></i> Security Rules Triggered by this IP:</span>
+                        <div class="d-inline-flex flex-wrap gap-1 mt-1">
+                            {% for rule_name in searched_stats.triggered_rules %}
+                                <span class="badge badge-pill-rule">{{ rule_name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                <h6 class="fw-bold text-white mb-3">
+                    <i class="bi bi-clock-history text-info me-1"></i> Request Activity History ({{ searched_requests|length }} requests)
+                </h6>
+
+                {% if searched_requests %}
+                    <div class="table-responsive">
+                        <table class="table table-custom table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp (UTC)</th>
+                                    <th>Method & Path</th>
+                                    <th>Status</th>
+                                    <th>Risk Score</th>
+                                    <th>Classification</th>
+                                    <th>Triggered Rules / Forensics</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for req in searched_requests %}
+                                    <tr>
+                                        <td class="small text-muted">{{ req.timestamp|date:"Y-m-d H:i:s" }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary font-monospace me-1">{{ req.method }}</span>
+                                            <span class="text-info font-monospace small">{{ req.path }}</span>
+                                        </td>
+                                        <td>
+                                            {% if req.status_code == 200 %}
+                                                <span class="badge bg-success-subtle text-success border border-success">{{ req.status_code }}</span>
+                                            {% elif req.status_code == 403 %}
+                                                <span class="badge bg-danger-subtle text-danger border border-danger">{{ req.status_code }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ req.status_code }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if req.risk_score >= 80 %}
+                                                <span class="badge bg-danger fs-6">{{ req.risk_score }} / 100</span>
+                                            {% elif req.risk_score >= 50 %}
+                                                <span class="badge bg-warning text-dark fs-6">{{ req.risk_score }} / 100</span>
+                                            {% elif req.risk_score >= 30 %}
+                                                <span class="badge bg-info text-dark fs-6">{{ req.risk_score }} / 100</span>
+                                            {% else %}
+                                                <span class="badge bg-success fs-6">{{ req.risk_score }} / 100</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="small fw-semibold {% if req.classification == 'HUMAN' %}text-success{% elif req.classification == 'SUSPICIOUS' %}text-warning{% else %}text-danger{% endif %}">
+                                                {{ req.get_classification_display }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if req.detection_logs.all %}
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    {% for log in req.detection_logs.all %}
+                                                        <span class="badge bg-danger-subtle text-danger border border-danger small" title="{{ log.reason }}">
+                                                            {{ log.rule_name }} (+{{ log.severity_points }})
+                                                        </span>
+                                                    {% endfor %}
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted small"><i class="bi bi-check2 text-success me-1"></i> Clean Request</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- CURRENT VISITOR REAL-TIME INSPECTION -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-5">
+            <div class="panel-card h-100">
+                <div class="panel-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-white"><i class="bi bi-radar me-2 text-info"></i> Your Current Visit Inspection</span>
+                    <span class="small text-muted">{{ timestamp }}</span>
+                </div>
+                <div class="p-4 text-center">
+                    {% if risk_score >= 80 %}
+                        <div class="score-circle score-high mb-3" style="width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.85rem;font-weight:700;margin:0 auto;background:rgba(239,68,68,0.15);color:#ef4444;border:3px solid #ef4444;">{{ risk_score }}</div>
+                        <h4 class="text-danger fw-bold">Critical Risk</h4>
+                        <span class="badge bg-danger fs-6 mb-3">Malicious Bot</span>
+                    {% elif risk_score >= 50 %}
+                        <div class="score-circle score-high mb-3" style="width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.85rem;font-weight:700;margin:0 auto;background:rgba(239,68,68,0.15);color:#ef4444;border:3px solid #ef4444;">{{ risk_score }}</div>
+                        <h4 class="text-danger fw-bold">High Risk</h4>
+                        <span class="badge bg-danger fs-6 mb-3">Automated Bot</span>
+                    {% elif risk_score >= 30 %}
+                        <div class="score-circle score-med mb-3" style="width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.85rem;font-weight:700;margin:0 auto;background:rgba(245,158,11,0.15);color:#f59e0b;border:3px solid #f59e0b;">{{ risk_score }}</div>
+                        <h4 class="text-warning fw-bold">Medium Risk</h4>
+                        <span class="badge bg-warning text-dark fs-6 mb-3">Suspicious Traffic</span>
+                    {% else %}
+                        <div class="score-circle score-low mb-3" style="width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.85rem;font-weight:700;margin:0 auto;background:rgba(16,185,129,0.15);color:#10b981;border:3px solid #10b981;">{{ risk_score }}</div>
+                        <h4 class="text-success fw-bold">Low Risk</h4>
+                        <span class="badge bg-success fs-6 mb-3">Human / Legitimate Traffic</span>
+                    {% endif %}
+
+                    <div class="text-start bg-dark p-3 rounded small border border-secondary border-opacity-25 mt-3">
+                        <div class="row g-2">
+                            <div class="col-4 text-muted">Your IP:</div>
+                            <div class="col-8 text-info fw-mono">{{ client_ip }}</div>
+                            <div class="col-4 text-muted">User-Agent:</div>
+                            <div class="col-8 text-light text-break">{{ user_agent|truncatechars:70 }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <span class="fw-bold text-white"><i class="bi bi-card-checklist me-2 text-warning"></i> Rules Triggered on Your Connection</span>
+                </div>
+                <div class="p-4">
+                    {% if rules_triggered %}
+                        <div class="alert alert-warning mb-3">
+                            <strong>Notice:</strong> The rule engine detected the following anomalies on your connection:
+                        </div>
+                        <div class="list-group">
+                            {% for r in rules_triggered %}
+                                <div class="list-group-item bg-dark border-secondary border-opacity-25 text-white mb-2 rounded">
+                                    <div class="d-flex w-100 justify-content-between align-items-center mb-1">
+                                        <h6 class="mb-0 text-warning fw-bold">{{ r.rule_name }}</h6>
+                                        <span class="badge bg-danger">+{{ r.risk_points }} pts</span>
+                                    </div>
+                                    <p class="mb-0 small text-secondary">{{ r.reason }}</p>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-shield-check text-success display-4 mb-3 d-block"></i>
+                            <h5 class="text-white">Clean Visitor Profile</h5>
+                            <p class="text-secondary small max-w-md mx-auto">
+                                No suspicious bot signatures, header anomalies, or rapid bursts were detected. Your browser is providing standard human headers.
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOT SIMULATION GUIDE -->
+    <div class="panel-card p-4">
+        <h5 class="fw-bold text-white mb-3">
+            <i class="bi bi-terminal-fill text-primary me-2"></i> How to Generate Bot Traffic to Test Search Results
+        </h5>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="p-3 bg-dark rounded border border-secondary border-opacity-25 h-100">
+                    <div class="fw-bold text-warning mb-1">Test 1: Run Automated Scraper (Curl)</div>
+                    <p class="text-muted small mb-2">Generates a bot request with missing browser headers.</p>
+                    <div class="code-block mb-2">curl -i http://127.0.0.1:8000/</div>
+                    <small class="text-info">Search <code>127.0.0.1</code> above to view the bot request flagged with +70 pts!</small>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="p-3 bg-dark rounded border border-secondary border-opacity-25 h-100">
+                    <div class="fw-bold text-danger mb-1">Test 2: Run Malicious Path Probe</div>
+                    <p class="text-muted small mb-2">Simulates an attacker scanning for <code>.env</code> leaks.</p>
+                    <div class="code-block mb-2">curl -i http://127.0.0.1:8000/.env</div>
+                    <small class="text-danger">Search <code>127.0.0.1</code> above to see the 403 Forbidden Malicious Bot log!</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,372 @@
+{% extends 'detector/base.html' %}
+
+{% block title %}Bot Shield - Security Analytics Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Dashboard Title Bar -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="fw-bold text-white mb-0">
+                <i class="bi bi-bar-chart-line-fill text-primary me-2"></i> Security Operations Dashboard
+            </h3>
+            <p class="text-secondary small mb-0">Real-time traffic categorization, behavioral heuristics, and threat telemetry.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'detector:investigate' %}" class="btn btn-outline-info btn-sm">
+                <i class="bi bi-search me-1"></i> Investigate Logs
+            </a>
+            <a href="{% url 'detector:ip_management' %}" class="btn btn-outline-warning btn-sm">
+                <i class="bi bi-shield-shaded me-1"></i> Manage IPs
+            </a>
+        </div>
+    </div>
+
+    <!-- Top KPI Metric Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-secondary small fw-semibold text-uppercase">Total Requests</span>
+                    <i class="bi bi-activity text-primary fs-4"></i>
+                </div>
+                <div class="h2 fw-bold text-white mb-0 mt-2">{{ total_requests }}</div>
+                <small class="text-muted">Analyzed connections</small>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-secondary small fw-semibold text-uppercase">Human Traffic</span>
+                    <i class="bi bi-person-check-fill text-success fs-4"></i>
+                </div>
+                <div class="h2 fw-bold text-success mb-0 mt-2">{{ human_percent }}%</div>
+                <small class="text-muted">{{ human_count }} legitimate visits</small>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-secondary small fw-semibold text-uppercase">Automated Bots</span>
+                    <i class="bi bi-robot text-danger fs-4"></i>
+                </div>
+                <div class="h2 fw-bold text-danger mb-0 mt-2">{{ bot_percent }}%</div>
+                <small class="text-muted">{{ total_bots }} automated requests</small>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-lg-3">
+            <div class="stat-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-secondary small fw-semibold text-uppercase">Blocked IPs</span>
+                    <i class="bi bi-slash-circle text-danger fs-4"></i>
+                </div>
+                <div class="h2 fw-bold text-warning mb-0 mt-2">{{ blocked_ips_count }}</div>
+                <small class="text-muted">Access denied by policy</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1: Traffic Breakdown Doughnut + 7-Day Timeline -->
+    <div class="row g-4 mb-4">
+        <!-- Chart 1: Traffic Breakdown -->
+        <div class="col-lg-5">
+            <div class="panel-card h-100">
+                <div class="panel-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-white"><i class="bi bi-pie-chart-fill text-info me-2"></i> Traffic Classification</span>
+                    <span class="badge bg-secondary">Total: {{ total_requests }}</span>
+                </div>
+                <div class="p-4 d-flex flex-column align-items-center justify-content-center" style="min-height: 320px;">
+                    <div style="position: relative; height: 260px; width: 100%;">
+                        <canvas id="trafficBreakdownChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart 2: Activity Timeline -->
+        <div class="col-lg-7">
+            <div class="panel-card h-100">
+                <div class="panel-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-white"><i class="bi bi-graph-up text-primary me-2"></i> 7-Day Traffic Trends</span>
+                    <span class="badge bg-dark border border-secondary text-light">Human vs Bots</span>
+                </div>
+                <div class="p-4" style="min-height: 320px;">
+                    <div style="position: relative; height: 260px; width: 100%;">
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2: Top Detection Rules Triggered + High-Risk IPs -->
+    <div class="row g-4 mb-4">
+        <!-- Chart 3: Top Rules -->
+        <div class="col-lg-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <span class="fw-bold text-white"><i class="bi bi-shield-exclamation text-warning me-2"></i> Top Triggered Security Rules</span>
+                </div>
+                <div class="p-4" style="min-height: 280px;">
+                    <div style="position: relative; height: 230px; width: 100%;">
+                        <canvas id="topRulesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- High-Risk IP Addresses Table -->
+        <div class="col-lg-6">
+            <div class="panel-card h-100">
+                <div class="panel-header d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-white"><i class="bi bi-exclamation-octagon text-danger me-2"></i> High-Risk IP Addresses</span>
+                    <a href="{% url 'detector:ip_management' %}" class="small text-info text-decoration-none">View All</a>
+                </div>
+                <div class="p-0">
+                    {% if high_risk_ips %}
+                        <div class="table-responsive">
+                            <table class="table table-custom table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>IP Address</th>
+                                        <th>Reputation</th>
+                                        <th>Requests</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ip in high_risk_ips %}
+                                        <tr>
+                                            <td>
+                                                <a href="{% url 'detector:index' %}?search_ip={{ ip.ip_address }}#investigation" class="text-info fw-mono text-decoration-none">
+                                                    {{ ip.ip_address }}
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <span class="badge {% if ip.reputation_score >= 80 %}bg-success{% elif ip.reputation_score >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                                    {{ ip.reputation_score }}/100
+                                                </span>
+                                            </td>
+                                            <td class="text-light">{{ ip.total_requests }}</td>
+                                            <td>
+                                                {% if ip.status == 'BLOCKED' %}
+                                                    <span class="badge bg-danger">BLOCKED</span>
+                                                {% elif ip.status == 'ALLOWLISTED' %}
+                                                    <span class="badge bg-success">ALLOW</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">MONITOR</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <form method="POST" action="{% url 'detector:toggle_ip_status' ip.ip_address %}" class="d-inline">
+                                                    {% csrf_token %}
+                                                    {% if ip.status == 'BLOCKED' %}
+                                                        <button type="submit" class="btn btn-outline-success btn-sm py-0 px-2">Unblock</button>
+                                                    {% else %}
+                                                        <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2">Block</button>
+                                                    {% endif %}
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="p-4 text-center text-muted">
+                            <i class="bi bi-shield-check text-success fs-1 mb-2 d-block"></i>
+                            No high-risk IPs recorded yet.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Feed: Recent Suspicious Requests -->
+    <div class="panel-card mb-4">
+        <div class="panel-header d-flex justify-content-between align-items-center">
+            <span class="fw-bold text-white"><i class="bi bi-radioactive text-warning me-2"></i> Recent Suspicious & Malicious Requests Feed</span>
+            <a href="{% url 'detector:investigate' %}?risk_level=MEDIUM" class="small text-info text-decoration-none">Full Investigation Console</a>
+        </div>
+        <div class="p-0">
+            {% if recent_suspicious %}
+                <div class="table-responsive">
+                    <table class="table table-custom table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Client IP</th>
+                                <th>Method & Path</th>
+                                <th>Risk Score</th>
+                                <th>Classification</th>
+                                <th>Triggered Rules</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in recent_suspicious %}
+                                <tr>
+                                    <td class="small text-muted">{{ req.timestamp|date:"H:i:s" }}</td>
+                                    <td>
+                                        <a href="{% url 'detector:index' %}?search_ip={{ req.ip_address_str }}#investigation" class="text-info fw-mono text-decoration-none">
+                                            {{ req.ip_address_str }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-dark border border-secondary text-light font-monospace me-1">{{ req.method }}</span>
+                                        <span class="text-light font-monospace small">{{ req.path|truncatechars:45 }}</span>
+                                    </td>
+                                    <td>
+                                        {% if req.risk_score >= 80 %}
+                                            <span class="badge bg-danger fs-6">{{ req.risk_score }}</span>
+                                        {% elif req.risk_score >= 50 %}
+                                            <span class="badge bg-warning text-dark fs-6">{{ req.risk_score }}</span>
+                                        {% else %}
+                                            <span class="badge bg-info text-dark fs-6">{{ req.risk_score }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="small fw-semibold {% if req.classification == 'MALICIOUS_BOT' %}text-danger{% elif req.classification == 'BOT' %}text-warning{% else %}text-info{% endif %}">
+                                            {{ req.get_classification_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-1">
+                                            {% for log in req.detection_logs.all %}
+                                                <span class="badge bg-danger-subtle text-danger border border-danger small" title="{{ log.reason }}">
+                                                    {{ log.rule_name }}
+                                                </span>
+                                            {% empty %}
+                                                <span class="text-muted small">Elevated Rate</span>
+                                            {% endfor %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="p-4 text-center text-muted">
+                    <i class="bi bi-check-circle text-success fs-1 mb-2 d-block"></i>
+                    No suspicious traffic recorded yet. Run <code>curl -i http://127.0.0.1:8000/</code> in your terminal to simulate bot traffic!
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Data passed from Django view
+    const breakdownData = {{ traffic_breakdown_json|safe }};
+    const timelineData = {{ timeline_data_json|safe }};
+    const topRulesData = {{ top_rules_json|safe }};
+
+    // Chart.js Default Dark Theme settings
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = '#334155';
+    Chart.defaults.font.family = 'system-ui, -apple-system, sans-serif';
+
+    // 1. Traffic Breakdown Donut Chart
+    const ctxBreakdown = document.getElementById('trafficBreakdownChart');
+    if (ctxBreakdown) {
+        new Chart(ctxBreakdown, {
+            type: 'doughnut',
+            data: {
+                labels: breakdownData.labels,
+                datasets: [{
+                    data: breakdownData.counts,
+                    backgroundColor: breakdownData.colors,
+                    borderColor: '#0f172a',
+                    borderWidth: 2,
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, padding: 15 }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
+    }
+
+    // 2. 7-Day Timeline Trends Chart
+    const ctxTimeline = document.getElementById('timelineChart');
+    if (ctxTimeline) {
+        new Chart(ctxTimeline, {
+            type: 'bar',
+            data: {
+                labels: timelineData.labels,
+                datasets: [
+                    {
+                        label: 'Human Requests',
+                        data: timelineData.humans,
+                        backgroundColor: '#10b981',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'Bots & Suspicious',
+                        data: timelineData.bots,
+                        backgroundColor: '#ef4444',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, beginAtZero: true }
+                },
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 12 } }
+                }
+            }
+        });
+    }
+
+    // 3. Top Rules Horizontal Bar Chart
+    const ctxRules = document.getElementById('topRulesChart');
+    if (ctxRules) {
+        new Chart(ctxRules, {
+            type: 'bar',
+            data: {
+                labels: topRulesData.labels.length > 0 ? topRulesData.labels : ['No rules triggered yet'],
+                datasets: [{
+                    label: 'Trigger Count',
+                    data: topRulesData.counts.length > 0 ? topRulesData.counts : [0],
+                    backgroundColor: '#8b5cf6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                    y: { grid: { display: false } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}
